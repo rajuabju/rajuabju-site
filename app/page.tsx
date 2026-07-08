@@ -37,13 +37,14 @@ export default function Home() {
 
       <div className="contact-card">
         <p className="lead">
-          Send a message and it&rsquo;ll land straight in my inbox — no email
-          address needed.
+          Send a message and it&rsquo;ll land straight in my inbox.
         </p>
         <ContactForm />
       </div>
 
-      <footer>&copy; {new Date().getFullYear()} rajuabju</footer>
+      <footer>
+        &copy; {new Date().getFullYear()} rajuabju &mdash; <em>The One &amp; Only</em>
+      </footer>
     </main>
   );
 }
