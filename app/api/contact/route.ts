@@ -19,6 +19,28 @@ function rateLimited(ip: string) {
   return arr.length > MAX_HITS;
 }
 
+async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) {
+    console.error("Contact form is missing TURNSTILE_SECRET_KEY env var.");
+    return false;
+  }
+  if (!token) return false;
+
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip }),
+    });
+    const data = await res.json();
+    return data?.success === true;
+  } catch (err) {
+    console.error("Turnstile verification request failed:", err);
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -31,6 +53,7 @@ export async function POST(request: Request) {
     const name = String(body?.name || "").trim();
     const email = String(body?.email || "").trim();
     const message = String(body?.message || "").trim();
+    const token = String(body?.token || "").trim(); // Turnstile challenge token
     const company = String(body?.company || "").trim(); // honeypot
 
     // Bots fill hidden fields — silently pretend success.
@@ -46,6 +69,14 @@ export async function POST(request: Request) {
     }
     if (!EMAIL_RE.test(email)) {
       return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
+    }
+
+    const isHuman = await verifyTurnstile(token, ip);
+    if (!isHuman) {
+      return NextResponse.json(
+        { error: "Verification failed. Please try the challenge again." },
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.RESEND_API_KEY;
