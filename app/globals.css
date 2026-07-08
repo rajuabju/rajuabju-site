@@ -175,6 +175,10 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+.cf-turnstile {
+  margin-top: 2px;
+}
+
 .honeypot {
   position: absolute;
   left: -9999px;
