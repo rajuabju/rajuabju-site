@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 
 export const runtime = "nodejs";
 
@@ -41,6 +40,51 @@ async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
   }
 }
 
+async function sendViaSmtp2go(opts: {
+  apiKey: string;
+  to: string;
+  name: string;
+  email: string;
+  message: string;
+  ip: string;
+}): Promise<{ ok: true } | { ok: false }> {
+  const { apiKey, to, name, email, message, ip } = opts;
+
+  try {
+    const res = await fetch("https://api.smtp2go.com/v3/email/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        api_key: apiKey,
+        // rajuabju.com is a verified sender domain in SMTP2GO (SPF/DKIM/return-path
+        // CNAMEs live in Cloudflare DNS), so we can send from it directly.
+        sender: "rajuabju.com contact form <noreply@rajuabju.com>",
+        to: [to],
+        subject: `New message from ${name} via rajuabju.com`,
+        text_body: `${message}\n\n---\nFrom: ${name} <${email}>\nIP: ${ip}`,
+        custom_headers: [{ header: "Reply-To", value: email }],
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    const succeeded = data?.data?.succeeded ?? 0;
+    const failed = data?.data?.failed ?? 0;
+
+    if (!res.ok || succeeded < 1 || failed > 0) {
+      console.error("SMTP2GO error:", res.status, JSON.stringify(data));
+      return { ok: false };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    console.error("SMTP2GO request failed:", err);
+    return { ok: false };
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -79,32 +123,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = process.env.SMTP2GO_API_KEY;
     const to = process.env.CONTACT_TO_EMAIL;
 
     if (!apiKey || !to) {
-      console.error("Contact form is missing RESEND_API_KEY or CONTACT_TO_EMAIL env vars.");
+      console.error("Contact form is missing SMTP2GO_API_KEY or CONTACT_TO_EMAIL env vars.");
       return NextResponse.json(
         { error: "The contact form isn't fully set up yet. Please try again later." },
         { status: 500 }
       );
     }
 
-    const resend = new Resend(apiKey);
-
-    const { error } = await resend.emails.send({
-      // onboarding@resend.dev works without verifying a domain on Resend.
-      // Once rajuabju.com is verified in Resend, swap this to something like
-      // "rajuabju.com <hello@rajuabju.com>".
-      from: "rajuabju.com contact form <onboarding@resend.dev>",
-      to,
-      reply_to: email,
-      subject: `New message from ${name} via rajuabju.com`,
-      text: `${message}\n\n---\nFrom: ${name} <${email}>\nIP: ${ip}`,
-    });
-
-    if (error) {
-      console.error("Resend error:", error);
+    const result = await sendViaSmtp2go({ apiKey, to, name, email, message, ip });
+    if (!result.ok) {
       return NextResponse.json({ error: "Failed to send. Please try again." }, { status: 502 });
     }
 
