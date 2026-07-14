@@ -117,7 +117,7 @@ Cloudflare to match — everything else about the setup stays the same.
 
 - The contact form requires name, email, message, and a passed Cloudflare
   Turnstile challenge before it will send. It also has a hidden honeypot
-  field and a light per-IP rate limit (5 submissions / 10 minutes).
+  field and a light per-IP rate limit (3 submissions / 30 minutes).
 - No email address appears anywhere in the page's HTML, source, or client
   JavaScript — it only lives in the `CONTACT_TO_EMAIL` server environment
   variable.
