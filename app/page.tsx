@@ -1,3 +1,4 @@
+import Image from "next/image";
 import ContactForm from "./components/ContactForm";
 import { FacebookIcon, RedditIcon, InstagramIcon, XIcon } from "./components/Icons";
 
@@ -11,7 +12,14 @@ const LINKS = [
 export default function Home() {
   return (
     <main>
-      <div className="avatar">RA</div>
+      <Image
+        className="avatar"
+        src="/ra-mark.png"
+        alt="rajuabju"
+        width={84}
+        height={84}
+        priority
+      />
       <h1>rajuabju</h1>
       <p className="tagline">
         &ldquo;My style is impetuous, my defense is impregnable, and I&rsquo;m
