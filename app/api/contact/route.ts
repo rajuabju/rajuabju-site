@@ -4,11 +4,11 @@ export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Very small in-memory rate limit per server instance: 5 requests / 10 min / IP.
+// Very small in-memory rate limit per server instance: 3 requests / 30 min / IP.
 // Not perfect across serverless invocations, but stops naive bot spam.
 const hits = new Map<string, number[]>();
-const WINDOW_MS = 10 * 60 * 1000;
-const MAX_HITS = 5;
+const WINDOW_MS = 30 * 60 * 1000;
+const MAX_HITS = 3;
 
 function rateLimited(ip: string) {
   const now = Date.now();
