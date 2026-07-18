@@ -1,0 +1,5 @@
+# Cloudflare Pages config for rajuabju.com.
+# Git build: framework preset "Next.js (Static HTML Export)", build command `npx next build`.
+name = "rajuabju-site"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "out"
