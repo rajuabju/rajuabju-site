@@ -1,16 +1,15 @@
-import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+// rajuabju.com — contact form handler (Cloudflare Pages Function).
+// POST /api/contact — Turnstile verify + rate limit, then SMTP2GO.
+// Secrets: TURNSTILE_SECRET_KEY, SMTP2GO_API_KEY, CONTACT_TO_EMAIL
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Very small in-memory rate limit per server instance: 3 requests / 30 min / IP.
-// Not perfect across serverless invocations, but stops naive bot spam.
-const hits = new Map<string, number[]>();
+// In-memory rate limit per isolate: 3 requests / 30 min / IP (a deterrent).
+const hits = new Map();
 const WINDOW_MS = 30 * 60 * 1000;
 const MAX_HITS = 3;
 
-function rateLimited(ip: string) {
+function rateLimited(ip) {
   const now = Date.now();
   const arr = (hits.get(ip) || []).filter((t) => now - t < WINDOW_MS);
   arr.push(now);
@@ -18,14 +17,12 @@ function rateLimited(ip: string) {
   return arr.length > MAX_HITS;
 }
 
-async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
-  const secret = process.env.TURNSTILE_SECRET_KEY;
+async function verifyTurnstile(token, ip, secret) {
   if (!secret) {
     console.error("Contact form is missing TURNSTILE_SECRET_KEY env var.");
     return false;
   }
   if (!token) return false;
-
   try {
     const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
@@ -40,27 +37,13 @@ async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
   }
 }
 
-async function sendViaSmtp2go(opts: {
-  apiKey: string;
-  to: string;
-  name: string;
-  email: string;
-  message: string;
-  ip: string;
-}): Promise<{ ok: true } | { ok: false }> {
-  const { apiKey, to, name, email, message, ip } = opts;
-
+async function sendViaSmtp2go({ apiKey, to, name, email, message, ip }) {
   try {
     const res = await fetch("https://api.smtp2go.com/v3/email/send", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         api_key: apiKey,
-        // rajuabju.com is a verified sender domain in SMTP2GO (SPF/DKIM/return-path
-        // CNAMEs live in Cloudflare DNS), so we can send from it directly.
         sender: "rajuabju.com contact form <noreply@rajuabju.com>",
         to: [to],
         subject: `New message from ${name} via rajuabju.com`,
@@ -68,16 +51,13 @@ async function sendViaSmtp2go(opts: {
         custom_headers: [{ header: "Reply-To", value: email }],
       }),
     });
-
     const data = await res.json().catch(() => null);
     const succeeded = data?.data?.succeeded ?? 0;
     const failed = data?.data?.failed ?? 0;
-
     if (!res.ok || succeeded < 1 || failed > 0) {
       console.error("SMTP2GO error:", res.status, JSON.stringify(data));
       return { ok: false };
     }
-
     return { ok: true };
   } catch (err) {
     console.error("SMTP2GO request failed:", err);
@@ -85,15 +65,25 @@ async function sendViaSmtp2go(opts: {
   }
 }
 
-export async function POST(request: Request) {
+const json = (obj, status) =>
+  new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: { "content-type": "application/json" },
+  });
+
+export async function onRequestPost(context) {
+  const { request, env } = context;
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const ip =
+      request.headers.get("cf-connecting-ip") ||
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "unknown";
 
     if (rateLimited(ip)) {
-      return NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429 });
+      return json({ error: "Too many requests. Try again later." }, 429);
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const name = String(body?.name || "").trim();
     const email = String(body?.email || "").trim();
     const message = String(body?.message || "").trim();
@@ -101,47 +91,37 @@ export async function POST(request: Request) {
     const company = String(body?.company || "").trim(); // honeypot
 
     // Bots fill hidden fields — silently pretend success.
-    if (company) {
-      return NextResponse.json({ ok: true });
-    }
+    if (company) return json({ ok: true });
 
     if (!name || !email || !message) {
-      return NextResponse.json({ error: "All fields are required." }, { status: 400 });
+      return json({ error: "All fields are required." }, 400);
     }
     if (name.length > 100 || email.length > 150 || message.length > 2000) {
-      return NextResponse.json({ error: "Input too long." }, { status: 400 });
+      return json({ error: "Input too long." }, 400);
     }
     if (!EMAIL_RE.test(email)) {
-      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
+      return json({ error: "Please enter a valid email address." }, 400);
     }
 
-    const isHuman = await verifyTurnstile(token, ip);
+    const isHuman = await verifyTurnstile(token, ip, env.TURNSTILE_SECRET_KEY);
     if (!isHuman) {
-      return NextResponse.json(
-        { error: "Verification failed. Please try the challenge again." },
-        { status: 400 }
-      );
+      return json({ error: "Verification failed. Please try the challenge again." }, 400);
     }
 
-    const apiKey = process.env.SMTP2GO_API_KEY;
-    const to = process.env.CONTACT_TO_EMAIL;
-
+    const apiKey = env.SMTP2GO_API_KEY;
+    const to = env.CONTACT_TO_EMAIL;
     if (!apiKey || !to) {
       console.error("Contact form is missing SMTP2GO_API_KEY or CONTACT_TO_EMAIL env vars.");
-      return NextResponse.json(
-        { error: "The contact form isn't fully set up yet. Please try again later." },
-        { status: 500 }
-      );
+      return json({ error: "The contact form isn't fully set up yet. Please try again later." }, 500);
     }
 
     const result = await sendViaSmtp2go({ apiKey, to, name, email, message, ip });
     if (!result.ok) {
-      return NextResponse.json({ error: "Failed to send. Please try again." }, { status: 502 });
+      return json({ error: "Failed to send. Please try again." }, 502);
     }
-
-    return NextResponse.json({ ok: true });
+    return json({ ok: true });
   } catch (err) {
     console.error("Contact route error:", err);
-    return NextResponse.json({ error: "Unexpected error. Please try again." }, { status: 500 });
+    return json({ error: "Unexpected error. Please try again." }, 500);
   }
 }
