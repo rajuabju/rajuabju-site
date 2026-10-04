@@ -1,3 +1,6 @@
 /out
 .wrangler/
 .dev.vars
+/node_modules
+/.next
+next-env.d.ts
