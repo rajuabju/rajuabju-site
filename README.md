@@ -1,6 +1,6 @@
 # rajuabju.com
 
-A single-page personal link/contact site (Next.js 15, App Router, static
+A single-page personal link/contact site (Next.js 16, App Router, static
 export). Dark theme, social buttons, and a contact form that emails you via
 SMTP2GO without ever showing your email address on the page. The contact form
 is gated behind a Cloudflare Turnstile CAPTCHA challenge.
@@ -95,6 +95,9 @@ Cloudflare, so Cloudflare is the source of truth for DNS:
   (3 submissions / 30 minutes).
 - No email address appears anywhere in the page's HTML, source, or client
   JavaScript; it only lives in the `CONTACT_TO_EMAIL` Pages secret.
-- Lint: ESLint is not set up (`next lint` is deprecated in Next 15.5). Adding
-  `eslint-config-next` currently pulls in a dev dependency with an unpatched
-  advisory, so it's left out for now.
+- Lint: ESLint is not set up, so there is no `lint` script (`next lint` was
+  removed in Next 16, and `next build` no longer lints). Adding it means
+  installing `eslint` + `eslint-config-next` with a flat `eslint.config.mjs`
+  and a `"lint": "eslint ."` script.
+- Node: Next 16 needs Node 20.9+. `.nvmrc` pins Node 22, which Cloudflare
+  Pages also reads for the build.
