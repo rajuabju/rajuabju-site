@@ -18,7 +18,7 @@ export default function Home() {
         alt="rajuabju"
         width={84}
         height={84}
-        priority
+        preload
       />
       <h1>rajuabju</h1>
       <p className="tagline">
